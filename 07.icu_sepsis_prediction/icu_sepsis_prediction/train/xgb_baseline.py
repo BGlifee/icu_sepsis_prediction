@@ -122,6 +122,19 @@ def main():
     dump({"imputer": imp, "feature_names": list(X_train.columns)}, artifacts / "xgb_imputer.joblib")
     (artifacts / "metrics_xgb.json").write_text(json.dumps(metrics, indent=2), encoding="utf-8")
 
+    # =========================
+    # Save training feature list
+    # =========================
+    feature_cols = list(X_train.columns)
+
+    # 위에 이미 import json 있으니 여기서 다시 import 하지 말기
+    feature_path = Path("artifacts") / "xgb_features.json"
+    with open(feature_path, "w", encoding="utf-8") as f:
+        json.dump(feature_cols, f, indent=2)
+
+    print("✅ Saved:", feature_path)
+
+
     # feature importance (gain)
     score = booster.get_score(importance_type="gain")
     fi = (
@@ -135,6 +148,25 @@ def main():
     print("✅ Saved:", artifacts / "xgb_imputer.joblib")
     print("✅ Saved:", artifacts / "metrics_xgb.json")
     print("✅ Saved:", artifacts / "feature_importance.csv")
+    # =========================
+    # Save Power BI predictions
+    # =========================
+
+    df_test_out = df_test[["patient_id", "t_hour"]].copy()
+    df_test_out["actual_label"] = y_test
+    df_test_out["risk_score"] = probs
+    df_test_out["predicted_label"] = (probs >= args.threshold).astype(int)
+    df_test_out["threshold"] = args.threshold
+    df_test_out["model_name"] = "xgboost"
+    df_test_out["horizon_h"] = 6
+
+    powerbi_dir = Path("powerbi")
+    powerbi_dir.mkdir(exist_ok=True)
+
+    df_test_out.to_csv(powerbi_dir / "fact_predictions.csv", index=False)
+
+    print("✅ Saved: powerbi/fact_predictions.csv")
+
 
 
 if __name__ == "__main__":
