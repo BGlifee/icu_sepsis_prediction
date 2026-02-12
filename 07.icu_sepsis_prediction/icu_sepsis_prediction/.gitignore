@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+data/
+artifacts/
+.env
+
+# Power BI exports / large artifacts
+powerbi/*.csv
+powerbi/*.parquet
+powerbi/*.pbix
+
