@@ -63,7 +63,7 @@ def main():
     all_missing = X_train.isna().all(axis=0)
     drop_cols = list(X_train.columns[all_missing])
     if drop_cols:
-        print(f"Dropping all-missing columns in train: {drop_cols}")
+        print(f"Dropping all-missing columns in train: {drop_cols}") 
         X_train = X_train.drop(columns=drop_cols)
         X_test = X_test.drop(columns=drop_cols)
 
@@ -152,7 +152,19 @@ def main():
     # Save Power BI predictions
     # =========================
 
-    df_test_out = df_test[["patient_id", "t_hour"]].copy()
+    # --- choose which vitals to export (aggregated features) ---
+
+    vital_prefixes = ["HR", "MAP", "Resp", "O2Sat", "Temp"]
+    vital_stats = ["__last", "__mean", "__std", "__min", "__max"]
+
+    vital_cols = [
+        f"{p}{s}"
+        for p in vital_prefixes
+        for s in vital_stats
+        if f"{p}{s}" in df_test.columns
+]
+
+    df_test_out = df_test[["patient_id", "t_hour"] + vital_cols].copy()
     df_test_out["actual_label"] = y_test
     df_test_out["risk_score"] = probs
     df_test_out["predicted_label"] = (probs >= args.threshold).astype(int)
@@ -160,12 +172,9 @@ def main():
     df_test_out["model_name"] = "xgboost"
     df_test_out["horizon_h"] = 6
 
-    powerbi_dir = Path("powerbi")
-    powerbi_dir.mkdir(exist_ok=True)
+    df_test_out.to_csv(powerbi_dir / "fact_predictions_enriched.csv", index=False)
+    print("✅ Saved: powerbi/fact_predictions_enriched.csv")
 
-    df_test_out.to_csv(powerbi_dir / "fact_predictions.csv", index=False)
-
-    print("✅ Saved: powerbi/fact_predictions.csv")
 
 
 
