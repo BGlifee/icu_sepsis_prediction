@@ -173,6 +173,19 @@ def main() -> None:
     df_test_out.to_csv(out_path, index=False)
     print("✅ Saved:", out_path)
 
+df_long = pd.read_parquet("data/processed/long.parquet")
+df_pred = pd.read_csv("powerbi/fact_predictions.csv")
+
+df_merged = df_long.merge(
+    df_pred[["patient_id", "t_hour", "risk_score"]],
+    left_on=["patient_id", "hour"],
+    right_on=["patient_id", "t_hour"],
+    how="left"
+)
+
+df_merged.drop(columns=["t_hour"], inplace=True)
+
+
 
 if __name__ == "__main__":
     main()
