@@ -179,6 +179,11 @@ def main() -> None:
     ap.add_argument("--artifacts_dir", type=str, default="artifacts")
     ap.add_argument("--powerbi_dir", type=str, default="powerbi")
 
+     # SHAP
+    ap.add_argument("--do_shap", action="store_true", help="Compute and save SHAP plots for the final model.")
+    ap.add_argument("--shap_sample", type=int, default=5000, help="Max rows to sample for SHAP (speed/memory).")
+    ap.add_argument("--shap_topk", type=int, default=30, help="Top-K features for bar plot / dependence plots.")
+
     args = ap.parse_args()
 
     import xgboost as xgb
@@ -246,6 +251,96 @@ def main() -> None:
     # Imbalance weight (TRAIN 기준)
     scale_pos_weight = compute_scale_pos_weight(y_train)
 
+    def save_shap_artifacts(
+        booster,
+        X: np.ndarray,
+        feature_names: List[str],
+        out_dir: Path,
+        prefix: str = "test",
+        sample_n: int = 5000,
+        topk: int = 30,
+        seed: int = SEED,
+    ) -> None:
+        """
+        Save SHAP summary plot + bar plot (+ optional dependence plots) to out_dir.
+        Works with xgboost.Booster trained by xgb.train.
+        """
+        try:
+            import shap
+            import matplotlib
+            matplotlib.use("Agg")  # headless safe
+            import matplotlib.pyplot as plt
+        except Exception as e:
+            print(f"⚠ SHAP plotting skipped (missing dependency). Install with: pip install shap matplotlib. Error: {e}")
+            return
+
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        # sample for speed
+        n = X.shape[0]
+        if n == 0:
+            print("⚠ SHAP skipped: empty X.")
+            return
+
+        rng = np.random.RandomState(seed)
+        if n > sample_n:
+            idx = rng.choice(n, size=sample_n, replace=False)
+            X_use = X[idx]
+        else:
+            X_use = X
+
+        # Make DataFrame for nicer plots
+        X_df = pd.DataFrame(X_use, columns=feature_names)
+
+        # TreeExplainer for XGBoost
+        explainer = shap.TreeExplainer(booster)
+        shap_values = explainer.shap_values(X_df)
+
+        # 1) summary dot plot
+        plt.figure()
+        shap.summary_plot(shap_values, X_df, show=False, max_display=topk)
+        p1 = out_dir / f"shap_summary_{prefix}.png"
+        plt.tight_layout()
+        plt.savefig(p1, dpi=200)
+        plt.close()
+        print("✅ Saved:", p1)
+
+        # 2) bar plot (mean |SHAP|)
+        plt.figure()
+        shap.summary_plot(shap_values, X_df, plot_type="bar", show=False, max_display=topk)
+        p2 = out_dir / f"shap_bar_{prefix}.png"
+        plt.tight_layout()
+        plt.savefig(p2, dpi=200)
+        plt.close()
+        print("✅ Saved:", p2)
+
+        # 3) Save mean(|shap|) as CSV for BI / reporting
+        mean_abs = np.abs(shap_values).mean(axis=0)
+        df_imp = pd.DataFrame({"feature": feature_names, "mean_abs_shap": mean_abs}).sort_values(
+            "mean_abs_shap", ascending=False
+        )
+        p3 = out_dir / f"shap_importance_{prefix}.csv"
+        df_imp.to_csv(p3, index=False)
+        print("✅ Saved:", p3)
+
+        # 4) (Optional) dependence plot for top features (small number)
+        # Keep it conservative: save up to 5 dependence plots
+        dep_n = min(5, topk, df_imp.shape[0])
+        for i in range(dep_n):
+            feat = df_imp.iloc[i]["feature"]
+            try:
+                plt.figure()
+                shap.dependence_plot(feat, shap_values, X_df, show=False)
+                pdep = out_dir / f"shap_dependence_{prefix}_{i+1}_{feat}.png"
+                plt.tight_layout()
+                plt.savefig(pdep, dpi=200)
+                plt.close()
+                print("✅ Saved:", pdep)
+            except Exception:
+                plt.close()
+            # dependence_plot can fail on constant features etc.
+                continue
+
     dtrain = xgb.DMatrix(X_train_imp, label=y_train, feature_names=list(X_train.columns))
     dtest = xgb.DMatrix(X_test_imp, label=y_test, feature_names=list(X_train.columns))
 
@@ -282,6 +377,23 @@ def main() -> None:
     # Predict + metrics on HOLDOUT TEST
     probs = booster.predict(dtest)
     metrics = compute_metrics(y_test, probs, threshold=float(args.threshold))
+
+        # -----------------------------
+    # SHAP (final model)
+    # -----------------------------
+    if args.do_shap:
+        # X_test_imp is numpy already (imputed)
+        # NOTE: SHAP can be heavy. We'll sample with args.shap_sample
+        save_shap_artifacts(
+            booster=booster,
+            X=X_test_imp,
+            feature_names=list(X_train.columns),
+            out_dir=artifacts,
+            prefix="holdout_test",
+            sample_n=int(args.shap_sample),
+            topk=int(args.shap_topk),
+            seed=SEED,
+        )
 
     print("\n=== XGBoost Baseline (Patient-holdout TEST) ===")
     print("Patients(train/test):", df_train["patient_id"].nunique(), "/", df_test["patient_id"].nunique())

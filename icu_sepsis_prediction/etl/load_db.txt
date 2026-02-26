@@ -1,0 +1,47 @@
+Script Purpose
+
+This script loads time-series window data (e.g., windows.parquet) into a PostgreSQL database.
+
+It performs the following steps:
+
+Reads window data from a Parquet or CSV file.
+
+Connects to a PostgreSQL database.
+
+Executes a schema SQL file to ensure required tables exist.
+
+Upserts (insert or update) records into the icu.windows table.
+
+Data Structure
+
+Each row must contain:
+
+patient_id
+
+t_hour (time index)
+
+y (label)
+
+All other columns are treated as features and stored as a JSON object in the features column.
+
+The upsert key is (patient_id, t_hour), meaning:
+
+If the record exists → it is updated.
+
+If it does not exist → it is inserted.
+
+Key Characteristics
+
+Uses bulk insert (execute_values) for efficiency.
+
+Stores feature values as JSON.
+
+Converts all feature values to float.
+
+Handles missing values as null in JSON.
+
+Supports a --dry_run mode for testing without modifying the database.
+
+Conceptual Role
+
+This script represents the Load phase of an ETL pipeline, transferring engineered time-series features from local files into a structured database for downstream analytics or BI use.
