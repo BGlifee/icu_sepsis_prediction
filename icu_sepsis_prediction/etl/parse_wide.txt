@@ -1,0 +1,34 @@
+Purpose
+
+This script converts PhysioNet-style per-patient .psv files into one long-format time-series table (one row per patient per hour).
+
+Key steps
+
+Read each patient file (*.psv, pipe-separated with |).
+
+Add two columns:
+
+patient_id: taken from the filename (e.g., p000001)
+
+hour: inferred time index
+
+Ensure SepsisLabel exists and is a clean 0/1 integer.
+
+Concatenate all patient tables into one dataset.
+
+Sort by patient_id and hour.
+
+Save the result as Parquet (recommended) or CSV.
+
+Hour inference logic
+
+If the file contains ICULOS, the script uses it as the hour index:
+
+converts to numeric, forward-fills missing values, fills remaining NaNs with 0, then casts to int
+
+If ICULOS is missing, it uses row order: 1, 2, 3, ...
+
+Output
+
+data/processed/long.parquet (default)
+A unified long table ready for sliding-window feature engineering.

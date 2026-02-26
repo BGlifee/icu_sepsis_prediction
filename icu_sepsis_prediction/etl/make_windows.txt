@@ -1,0 +1,49 @@
+Purpose
+
+This script converts hourly ICU time-series data (long format) into a supervised learning dataset using a sliding window approach.
+
+It creates one training row per patient per time step:
+
+an observation window (past data) → features
+
+a prediction horizon (future labels) → target y
+
+How the label is defined (no leakage)
+
+For each patient and time t:
+
+Observation window: hours [t − W + 1, …, t]
+
+Prediction horizon: hours (t + 1, …, t + H)
+
+Binary label:
+y(t) = 1 if any SepsisLabel = 1 occurs in the next H hours, otherwise 0
+
+This uses only future labels, so it avoids data leakage.
+
+How features are generated
+
+For each variable inside the observation window, it computes:
+
+last (last non-missing value)
+
+mean
+
+std
+
+min
+
+max
+
+Feature names are stored as:
+<col>__last, <col>__mean, <col>__std, <col>__min, <col>__max
+
+Output
+
+It saves:
+
+windows.parquet (or CSV): the final ML table with columns:
+
+patient_id, t_hour, y, and engineered features
+
+metadata.json: includes window settings (W, H, step) and dataset stats (number of windows, patients, features, and feature names)
